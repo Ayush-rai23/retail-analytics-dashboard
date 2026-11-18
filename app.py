@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -8,6 +9,8 @@ from data_processing import (
     compute_statistical_summary,
     calculate_kpis,
 )
+
+SAMPLE_DATA_PATH = "experiment10_raw_dataset - experiment10_raw_dataset.csv"
 
 st.set_page_config(
     page_title="Enterprise Retail Analytics Dashboard",
@@ -97,9 +100,9 @@ def render_charts(df: pd.DataFrame) -> None:
                 color_discrete_map={"Sales": "#1f77b4", "Profit": "#2ca02c"},
             )
             fig_trend.update_layout(hovermode="x unified", margin=dict(l=10, r=10, t=30, b=10))
-            st.plotly_chart(fig_trend, use_container_width=True)
+            st.plotly_chart(fig_trend, width="stretch")
 
-    # Chart 2: Sales & Profit by Category and Sub-Category (Grouped Bar Chart)
+    # Chart 2: Sales & Profit by Category (Grouped Bar Chart)
     with row1_col2:
         st.subheader("📊 Sales & Profit by Category")
         if {"Category", "Sales", "Profit"}.issubset(df.columns):
@@ -114,7 +117,7 @@ def render_charts(df: pd.DataFrame) -> None:
                 color_discrete_map={"Sales": "#3b82f6", "Profit": "#10b981"},
             )
             fig_cat.update_layout(margin=dict(l=10, r=10, t=30, b=10))
-            st.plotly_chart(fig_cat, use_container_width=True)
+            st.plotly_chart(fig_cat, width="stretch")
 
     row2_col1, row2_col2 = st.columns(2)
 
@@ -132,7 +135,7 @@ def render_charts(df: pd.DataFrame) -> None:
             )
             fig_reg.update_traces(textposition="inside", textinfo="percent+label")
             fig_reg.update_layout(margin=dict(l=10, r=10, t=30, b=10))
-            st.plotly_chart(fig_reg, use_container_width=True)
+            st.plotly_chart(fig_reg, width="stretch")
 
     # Chart 4: Discount vs. Profit Scatter Analysis
     with row2_col2:
@@ -151,19 +154,30 @@ def render_charts(df: pd.DataFrame) -> None:
             )
             fig_scatter.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Break-even")
             fig_scatter.update_layout(margin=dict(l=10, r=10, t=30, b=10))
-            st.plotly_chart(fig_scatter, use_container_width=True)
+            st.plotly_chart(fig_scatter, width="stretch")
 
 
 def main() -> None:
     st.title("📊 Sales & Profit Analytics Application")
-    st.caption("Upload CSV, Excel (.xlsx), or JSON (.json) datasets for automated validation, cleaning, and interactive BI analysis.")
-
-    st.sidebar.header("📂 1. Data Upload & Cleaning")
-    uploaded_file = st.sidebar.file_uploader(
-        "Upload Dataset",
-        type=["csv", "xlsx", "json"],
-        help="Supported formats: CSV (.csv), Excel (.xlsx), JSON (.json)",
+    st.caption(
+        "Upload CSV, Excel (.xlsx), or JSON (.json) datasets—or explore the built-in sample dataset—"
+        "for automated validation, cleaning, and interactive BI analysis."
     )
+
+    st.sidebar.header("📂 1. Data Source & Cleaning")
+    data_source = st.sidebar.radio(
+        "Choose Data Source",
+        options=["Use Built-in Sample Dataset", "Upload My Own File"],
+        index=0,
+    )
+
+    uploaded_file = None
+    if data_source == "Upload My Own File":
+        uploaded_file = st.sidebar.file_uploader(
+            "Upload Dataset",
+            type=["csv", "xlsx", "json"],
+            help="Supported formats: CSV (.csv), Excel (.xlsx), JSON (.json)",
+        )
 
     missing_strategy = st.sidebar.selectbox(
         "Missing Value Strategy",
@@ -172,12 +186,28 @@ def main() -> None:
     remove_dups = st.sidebar.checkbox("Remove Duplicate Records", value=True)
     cap_outliers = st.sidebar.checkbox("Sanitize Outliers & Invalid Entries", value=True)
 
-    if uploaded_file is None:
-        st.info("👈 Upload a `.csv`, `.xlsx`, or `.json` dataset from the sidebar to begin.")
-        return
-
+    # Load either the built-in sample dataset or the user's uploaded file
     try:
-        raw_df = load_uploaded_file(uploaded_file)
+        if data_source == "Use Built-in Sample Dataset":
+            if not os.path.exists(SAMPLE_DATA_PATH):
+                st.error(f"Sample dataset '{SAMPLE_DATA_PATH}' not found in repository.")
+                return
+            raw_df = pd.read_csv(SAMPLE_DATA_PATH)
+            st.sidebar.success("Loaded public sample dataset (185 rows).")
+
+            with open(SAMPLE_DATA_PATH, "rb") as f:
+                st.sidebar.download_button(
+                    label="⬇️ Download Sample CSV",
+                    data=f.read(),
+                    file_name="sample_retail_dataset.csv",
+                    mime="text/csv",
+                )
+        else:
+            if uploaded_file is None:
+                st.info("👈 Upload a `.csv`, `.xlsx`, or `.json` dataset from the sidebar to begin.")
+                return
+            raw_df = load_uploaded_file(uploaded_file)
+
         validation_report = validate_dataset(raw_df)
     except Exception as exc:
         st.error(f"File loading or validation failed: {exc}")
@@ -219,10 +249,10 @@ def main() -> None:
         v4.metric("Duplicate Rows", f"{validation_report['duplicate_rows']:,}")
 
         st.markdown("**Column Schema, Data Types & Missing Value Breakdown**")
-        st.dataframe(validation_report["schema_summary"], use_container_width=True)
+        st.dataframe(validation_report["schema_summary"], width="stretch")
 
         st.markdown("**Raw Data Preview (First 20 Rows)**")
-        st.dataframe(raw_df.head(20), use_container_width=True)
+        st.dataframe(raw_df.head(20), width="stretch")
 
     # Tab 3: Preprocessing Audit & Statistical Summaries
     with tab_preprocessing:
@@ -235,10 +265,10 @@ def main() -> None:
 
         st.subheader("Descriptive Statistical Summary (Cleaned Numeric Features)")
         stats_df = compute_statistical_summary(cleaned_df)
-        st.dataframe(stats_df, use_container_width=True)
+        st.dataframe(stats_df, width="stretch")
 
         st.subheader("Cleaned Dataset Preview & Export")
-        st.dataframe(cleaned_df.head(20), use_container_width=True)
+        st.dataframe(cleaned_df.head(20), width="stretch")
         csv_bytes = cleaned_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             label="⬇️ Download Cleaned Dataset (CSV)",
